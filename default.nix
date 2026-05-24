@@ -11,7 +11,8 @@ let
     all
     hasAttr
     isAttrs
-    isString;
+    isString
+    ;
 
   inherit (lib)
     types
@@ -22,20 +23,6 @@ let
     mapAttrsToList
     mkOption
     ;
-
-  nix-types = {
-    inherit
-      nix-prim
-      nix-var
-      nix-attrs
-      nix-access
-      nix-let-in
-      nix-function
-      nix-application
-      nix-import
-      nix-raw
-      ;
-  };
 
   # Ergonomic Nix expressions
   var = s: { __var = s; };
@@ -56,7 +43,21 @@ let
   import = f: { __import = f; };
   raw = r: { __raw = r; };
 
-  # Nix expressions options
+  # Nix expression types
+  nix-types = {
+    inherit
+      nix-prim
+      nix-var
+      nix-attrs
+      nix-access
+      nix-let-in
+      nix-function
+      nix-application
+      nix-import
+      nix-raw
+      ;
+  };
+
   nix-expr = types.oneOf (attrValues nix-types);
 
   nix-prim = types.nullOr (
@@ -119,6 +120,8 @@ let
     "__let"
     "__in"
   ];
+
+  # TODO: ite
 
   nix-function = types.submodule {
     options = {
@@ -183,23 +186,23 @@ let
   };
   specialAttrs.raw = [ "__raw" ];
 
+  # Utilities
   strip = t: e: removeAttrs e specialAttrs.${t};
 
-  getType = e: 
-    if isAttrs e
-      then 
-      findFirst
-        (t: all (attr: hasAttr attr e) specialAttrs.${t})
-        (abort "nix-expr with unknown type")
-        (attrNames specialAttrs)
-    else "prim";
+  getType =
+    e:
+    if isAttrs e then
+      findFirst (t: all (attr: hasAttr attr e) specialAttrs.${t}) "attrs" (
+        attrNames specialAttrs
+      )
+    else
+      "prim";
 
-  # nix-expr to string
+  # Nix expression to string
   serialize = {
     __functor = self: e: self.${getType e} e;
 
-    prim = e: 
-      if isString e then ''"${e}"'' else toString e;
+    prim = e: if isString e then ''"${e}"'' else toString e;
 
     var = e: e.__var;
 
@@ -216,7 +219,7 @@ let
         ])
       }}";
 
-    attrs = e: (if e.__rec then "rec " else "") + serialize.bindings (strip "attrs" e);
+    attrs = e: (if e ? __rec && e.__rec then "rec " else "") + serialize.bindings (strip "attrs" e);
 
     access = e: "${serialize e.__set}.${e.__path}";
 
@@ -273,5 +276,7 @@ in
     serialize
     getType
     ;
-  types = nix-types;
+  types = nix-types // {
+    inherit nix-expr;
+  };
 }
