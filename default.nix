@@ -9,15 +9,20 @@ let
     attrNames
     attrValues
     all
+    head
+    tail
     hasAttr
     isAttrs
+    isList
     isString
     ;
 
   inherit (lib)
     types
     pipe
+    length
     findFirst
+    genAttrs
     concatStrings
     concatStringsSep
     mapAttrsToList
@@ -25,23 +30,40 @@ let
     ;
 
   # Ergonomic Nix expressions
-  var = s: { __var = s; };
-  recc = a: { __rec = true; } // a;
-  acc = s: p: {
-    __set = s;
-    __path = p;
+  var = __var: { inherit __var; };
+  rec-set = a: { __rec = true; } // a;
+  acc = __set: __path: {
+    inherit __set __path;
   };
-  letin = l: i: {
-    __let = l;
-    __in = i;
+  op = genAttrs (attrNames ops) (
+    __op: __args: {
+      inherit __op __args;
+    }
+  );
+  conds = __conds: __else: {
+    inherit __conds __else;
   };
-  func = f: a: {
-    __arg = f;
-    __body = a;
+  ifthen = __if: __then: {
+    inherit __if __then;
   };
-  app = f: as: { __app = [ f ] ++ as; };
-  import = f: { __import = f; };
-  raw = r: { __raw = r; };
+  letin = __let: __in: {
+    inherit __let __in;
+  };
+  lambda = __arg: __body: {
+    inherit __arg __body;
+  };
+  app = f: as: {
+    __app =
+      if isList as then
+        [ f ] ++ as
+      else
+        [
+          f
+          as
+        ];
+  };
+  import = __import: { inherit __import; };
+  raw = __raw: { inherit __raw; };
 
   # Nix expression types
   nix-types = {
@@ -50,6 +72,8 @@ let
       nix-var
       nix-attrs
       nix-access
+      nix-op
+      nix-conds
       nix-let-in
       nix-function
       nix-application
@@ -106,6 +130,45 @@ let
     "__path"
   ];
 
+  ops = {
+    # may be useful in the future if we eval
+    "." = set: path: set.${path};
+    ".or" =
+      set: path: _or:
+      set.${path} or _or;
+    "+" = e1: e2: e1 + e2;
+    "-" = n1: n2: n1 - n2;
+    "*" = n1: n2: n1 * n2;
+    "/" = n1: n2: n1 / n2;
+    "!" = n: !n;
+    "//" = set: new: set // new;
+    "<" = e1: e2: e1 < e2;
+    ">" = e1: e2: e1 > e2;
+    "<=" = e1: e2: e1 <= e2;
+    ">=" = e1: e2: e1 >= e2;
+    "==" = e1: e2: e1 == e2;
+    "!=" = e1: e2: e1 != e2;
+    "&&" = e1: e2: e1 && e2;
+    "||" = e1: e2: e1 || e2;
+    "->" = e1: e2: !e1 || e2;
+    "|>" = e1: e2: e2 e1;
+    "<|" = e1: e2: e1 e2;
+  };
+  nix-op = types.submodule {
+    options = {
+      __op = mkOption {
+        type = types.enum (attrNames ops);
+      };
+      __args = mkOption {
+        type = types.listOf nix-expr;
+      };
+    };
+  };
+  specialAttrs.op = [
+    "__op"
+    "__args"
+  ];
+
   nix-let-in = types.submodule {
     options = {
       __let = mkOption {
@@ -121,7 +184,33 @@ let
     "__in"
   ];
 
-  # TODO: ite
+  nix-conds = types.submodule {
+    options = {
+      __conds = mkOption {
+        type =
+          with types;
+          listOf types.submodule {
+            __if = mkOption {
+              type = nix-expr;
+            };
+            __then = mkOption {
+              type = nix-expr;
+            };
+          };
+      };
+      __else = mkOption {
+        type = nix-expr;
+      };
+    };
+  };
+  specialAttrs.conds = [
+    "__conds"
+    "__else"
+  ];
+  specialAttrs.cond = [
+    "__if"
+    "__then"
+  ];
 
   nix-function = types.submodule {
     options = {
@@ -192,9 +281,7 @@ let
   getType =
     e:
     if isAttrs e then
-      findFirst (t: all (attr: hasAttr attr e) specialAttrs.${t}) "attrs" (
-        attrNames specialAttrs
-      )
+      findFirst (t: all (attr: hasAttr attr e) specialAttrs.${t}) "attrs" (attrNames specialAttrs)
     else
       "prim";
 
@@ -202,13 +289,22 @@ let
   serialize = {
     __functor = self: e: self.${getType e} e;
 
-    prim = e: if isString e then ''"${e}"'' else toString e;
+    prim =
+      e:
+      if isString e then
+        ''"${e}"''
+      else if e == true then
+        "true"
+      else if e == false then
+        "false"
+      else
+        toString e;
 
     var = e: e.__var;
 
     bindings =
       e:
-      "{${
+      "${
         (pipe e [
           (mapAttrsToList (
             k: v: ''
@@ -217,11 +313,70 @@ let
           ))
           concatStrings
         ])
-      }}";
+      }";
 
-    attrs = e: (if e ? __rec && e.__rec then "rec " else "") + serialize.bindings (strip "attrs" e);
+    attrs =
+      e: (if e ? __rec && e.__rec then "rec " else "") + "{" + serialize.bindings (strip "attrs" e) + "}";
 
     access = e: "${serialize e.__set}.${e.__path}";
+
+    op =
+      e:
+      let
+        fst = serialize (head e.__args);
+        snd = serialize (head (tail e.__args));
+        trd = serialize (head (head (tail e.__args)));
+      in
+      "(${
+        concatStrings (
+          if e.__op == ".or" then
+            [
+              fst
+              "."
+              snd
+              "or"
+              trd
+            ]
+          else if e.__op == "." then
+            [
+              fst
+              "."
+              snd
+            ]
+          else if e.__op == "!" then
+            [
+              e.__op
+              " "
+              fst
+            ]
+          else
+            [
+              fst
+              " "
+              e.__op
+              " "
+              snd
+            ]
+        )
+      })";
+
+    cond = c: ''
+      if ${serialize c.__if} then ${serialize c.__then}
+    '';
+
+    conds =
+      e:
+      let
+        fst = head e.__conds;
+        rst = tail e.__conds;
+      in
+      ''
+        (
+          ${serialize.cond fst}
+          ${concatStringsSep "\n" (map (c: "else " + serialize.cond c) rst)}
+          else ${serialize e.__else}
+        )
+      '';
 
     let-in = e: ''
       let
@@ -251,10 +406,21 @@ let
     application =
       e:
       "(${
-        pipe e.__app [
-          (map serialize)
-          (concatStringsSep " ")
-        ]
+        let
+          func = head e.__app;
+        in
+        if isString func then # treat as function
+          func
+          + " "
+          + pipe (tail e.__app) [
+            (map serialize)
+            (concatStringsSep " ")
+          ]
+        else
+          pipe e.__app [
+            (map serialize)
+            (concatStringsSep " ")
+          ]
       })";
 
     import = e: "import ${serialize e.__import}";
@@ -266,10 +432,13 @@ in
 {
   inherit
     var
-    recc
+    rec-set
     acc
+    op
+    conds
+    ifthen
     letin
-    func
+    lambda
     app
     import
     raw
