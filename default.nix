@@ -20,7 +20,6 @@ let
   inherit (lib)
     types
     pipe
-    length
     findFirst
     genAttrs
     concatStrings
@@ -62,7 +61,7 @@ let
           as
         ];
   };
-  import = __import: { inherit __import; };
+  importt = __import: { inherit __import; };
   raw = __raw: { inherit __raw; };
 
   # Nix expression types
@@ -440,7 +439,7 @@ in
     letin
     lambda
     app
-    import
+    importt
     raw
     serialize
     getType

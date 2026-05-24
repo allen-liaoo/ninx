@@ -1,6 +1,5 @@
 {
   nixpkgs,
-  lib,
   ninx,
   ...
 }:
