@@ -14,18 +14,23 @@ ninx provides types for nix expressions via the Nixpkgs module system. You can u
 }
 ```
 
+## Constructing Nix Expressions
 Primitive values can be used as is. This includes:
 - int
 - float
 - boolean
 - string
-- path
+- path (note: relative paths are relative against wherever the nix-expr is serialized to)
 - null
 - non-recursive attribute set
 - list
 
 Additionally, ninx provides ergnomic-ish helpers:
 ```nix
+inherit (ninx)
+  var rec-set acc op cond ifthen
+  letin lambda app importt raw;
+
 # variables
 var "a"
 
@@ -70,21 +75,23 @@ app (var "func") 1 # func 1
 # import
 importt ./default.nix
 
-# lastly, string escape hatch
+# lastly, string escape hatch; not merge-friendly
 raw "<nixpkgs>"
 raw ''
   builtins.trace "Hello world!" null
 ''
 ```
 
+Most expressions can be constructed directly as attrsets with special attributes prefixed by `__`. Read the [source](/default.nix) for more.
+
 ## Why?
 Fair question. Why would you want to store encoded Nix code in Nix?
 
-One usage I have is I want a flake templates repository like [this one](https://github.com/the-nix-way/dev-templates), but it is not DRY as it contains many `flake.nix` with similary setups.
+One usage I have is: I want a flake templates repository like [this one](https://github.com/the-nix-way/dev-templates), but it is not DRY as it contains many `flake.nix` with similary setups.
 
-My goal is to utilize this format to create a "flake-output" module, so that I can use it to target `flake-files` to generate `flake.nix`s, so I don't have to repeat myself. I know I am building an exosuit to open a pickle jar. But it's fun! I will update my progress here when I get to it.
+My goal is to utilize ninx to create a "flake-output" module to target `flake-files` for generating `flake.nix` templates so I don't have to repeat myself. I know it's like building an exosuit to open a pickle jar. But it's fun! I will update my progress here when I get to it.
 
-If ~~you are as crazy as me~~ have found another use for ninx, please let me know!
+If you ~~are as crazy as me~~ have found other uses for ninx, please let me know!
 
 ## Status
 - [x] Options/Types definitions

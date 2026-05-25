@@ -1,27 +1,14 @@
 {
   nixpkgs,
   ninx,
+  ninx-lib,
   testEq,
   ...
 }:
 
 let
   # serialize and evaluate code
-  serEval =
-    nix-expr:
-    let
-      serialized = ninx.serialize nix-expr;
-      script =
-        nixpkgs.runCommand "eval-result.json"
-          {
-            requiredSystemFeatures = [ "recursive-nix" ];
-            NIX_PATH = "nixpkgs=${<nixpkgs>}";
-          }
-          ''
-            ${nixpkgs.nix}/bin/nix --extra-experimental-features nix-command eval --json --show-trace --expr '${serialized}' > $out
-          '';
-    in
-    (builtins.fromJSON (builtins.readFile script));
+  serEval = nix-expr: ninx-lib.evalNixStr (ninx.serialize nix-expr);
 in
 with ninx;
 [

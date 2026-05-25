@@ -22,8 +22,7 @@ in
 with ninx;
 
 [
-  (testEq 
-    "plain attrs"
+  (testEq "attrs"
     {
       __rec = false;
       a = 1;
