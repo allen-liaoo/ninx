@@ -2,6 +2,8 @@
   nixpkgs ? import <nixpkgs> { },
   lib ? nixpkgs.lib,
   ninx ? import ../default.nix { },
+  ninx-lib ? import ../lib.nix { },
+  ...
 }:
 
 let
@@ -31,6 +33,7 @@ let
       nixpkgs
       lib
       ninx
+      ninx-lib
       test
       testEq
       ;
@@ -59,13 +62,19 @@ let
           tests;
       in
       builtins.trace "${filename}: ${toString stats.passed}/${toString (builtins.length tests)} tests passed\n" stats;
+
+  testDir = dirname: map (f: testFile (dirname + "/" + f)) (import ./${dirname});
 in
 
 lib.foldl 
   (failed: stat:
     failed + stat.failed) 
   0
-  [
-  #(testFile "merge.nix")
-    (testFile "serialize-eval.nix")
-  ]
+  (
+    [
+      (testFile "types.nix")
+      (testFile "merge.nix")
+      # (testFile "serialize-eval.nix")
+    ] 
+    ++ (testDir "lib")
+  )

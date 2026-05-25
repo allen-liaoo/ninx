@@ -5,9 +5,10 @@
 }:
 
 let
+  ninx-lib = import ./lib.nix { inherit nixpkgs lib; };
+
   inherit (builtins)
     attrNames
-    attrValues
     all
     head
     tail
@@ -27,6 +28,9 @@ let
     mapAttrsToList
     mkOption
     ;
+
+  inherit (ninx-lib)
+    submoduleWithAttrCheck;
 
   # Ergonomic Nix expressions
   var = __var: { inherit __var; };
@@ -51,6 +55,9 @@ let
   lambda = __arg: __body: {
     inherit __arg __body;
   };
+  args = attrs: __at: __varargs: attrs // { # when function argument is an attrset pattern
+    inherit __at __varargs;
+  };
   app = f: as: {
     __app =
       if isList as then
@@ -65,11 +72,9 @@ let
   raw = __raw: { inherit __raw; };
 
   # Nix expression types
-  nix-types = {
-    inherit
+  nix-expr = types.oneOf [
       nix-prim
       nix-var
-      nix-attrs
       nix-access
       nix-op
       nix-conds
@@ -78,10 +83,10 @@ let
       nix-application
       nix-import
       nix-raw
-      ;
-  };
-
-  nix-expr = types.oneOf (attrValues nix-types);
+      nix-attrs 
+      # order matters
+      # since nix-attrs is free-form, we need it to be the last so attrset matching previous types will be used first
+  ];
 
   nix-prim = types.nullOr (
     with types;
@@ -94,7 +99,7 @@ let
     ]
   );
 
-  nix-var = types.submodule {
+  nix-var = submoduleWithAttrCheck {
     options = {
       __var = mkOption {
         type = types.str;
@@ -103,7 +108,7 @@ let
   };
   specialAttrs.var = [ "__var" ];
 
-  nix-attrs = types.submodule {
+  nix-attrs = submoduleWithAttrCheck {
     freeformType = types.attrsOf nix-expr;
     options = {
       __rec = mkOption {
@@ -114,7 +119,7 @@ let
   };
   specialAttrs.attrs = [ "__rec" ];
 
-  nix-access = types.submodule {
+  nix-access = submoduleWithAttrCheck {
     options = {
       __set = mkOption {
         type = nix-expr;
@@ -153,7 +158,7 @@ let
     "|>" = e1: e2: e2 e1;
     "<|" = e1: e2: e1 e2;
   };
-  nix-op = types.submodule {
+  nix-op = submoduleWithAttrCheck {
     options = {
       __op = mkOption {
         type = types.enum (attrNames ops);
@@ -168,7 +173,7 @@ let
     "__args"
   ];
 
-  nix-let-in = types.submodule {
+  nix-let-in = submoduleWithAttrCheck {
     options = {
       __let = mkOption {
         type = types.attrsOf nix-expr;
@@ -183,12 +188,12 @@ let
     "__in"
   ];
 
-  nix-conds = types.submodule {
+  nix-conds = submoduleWithAttrCheck {
     options = {
       __conds = mkOption {
         type =
           with types;
-          listOf types.submodule {
+          listOf submoduleWithAttrCheck {
             __if = mkOption {
               type = nix-expr;
             };
@@ -211,19 +216,20 @@ let
     "__then"
   ];
 
-  nix-function = types.submodule {
+  nix-function = submoduleWithAttrCheck {
     options = {
       __arg =
         let
-          argsSet = types.submodule {
+          argsSet = submoduleWithAttrCheck {
             freeformType = types.attrsOf nix-expr; # if null, treat as nonoptional
             options = {
+              # @-pattern
               __at = mkOption {
-                # @-pattern
                 type = types.str;
+                default = null;
               };
+              # ... pattern
               __varargs = mkOption {
-                # ... pattern
                 type = types.bool;
                 default = false; # TODO: add check
               };
@@ -247,7 +253,7 @@ let
     "__varargs"
   ];
 
-  nix-application = types.submodule {
+  nix-application = submoduleWithAttrCheck {
     options = {
       __app = mkOption {
         type = types.listOf nix-expr;
@@ -256,7 +262,7 @@ let
   };
   specialAttrs.application = [ "__app" ];
 
-  nix-import = types.submodule {
+  nix-import = submoduleWithAttrCheck {
     options = {
       __import = mkOption {
         type = nix-expr;
@@ -265,7 +271,7 @@ let
   };
   specialAttrs.import = [ "__import" ];
 
-  nix-raw = types.submodule {
+  nix-raw = submoduleWithAttrCheck {
     options = {
       __raw = mkOption {
         type = types.str;
@@ -438,13 +444,27 @@ in
     ifthen
     letin
     lambda
+    args
     app
     importt
     raw
     serialize
     getType
     ;
-  types = nix-types // {
-    inherit nix-expr;
+  types = {
+    inherit
+      nix-expr
+      nix-prim
+      nix-var
+      nix-attrs 
+      nix-access
+      nix-op
+      nix-conds
+      nix-let-in
+      nix-function
+      nix-application
+      nix-import
+      nix-raw
+      ;
   };
 }
