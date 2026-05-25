@@ -1,0 +1,4 @@
+[
+  "aggregateOptions.nix"
+  "submoduleWithAttrCheck.nix"
+]
