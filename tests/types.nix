@@ -11,36 +11,37 @@ in
 with ninx;
 
 [
-  (test "prim (int)" (typeEq ntypes.nix-prim 123))
-  (test "prim (float)" (typeEq ntypes.nix-prim 123.123))
-  (test "prim (bool)" (typeEq ntypes.nix-prim true))
-  (test "prim (string)" (typeEq ntypes.nix-prim "abc"))
-  (test "prim (path)" (typeEq ntypes.nix-prim ./default.nix))
-  (test "var" (typeEq ntypes.nix-var (var "a")))
-  (test "access" (typeEq ntypes.nix-access (acc (var "a") "b.c" )))
-  (test "attrs" (typeEq ntypes.nix-attrs { a = 123; b.c = 123; }))
-  (test "rec-attrs" (typeEq ntypes.nix-attrs (rec-set { a = (var b); b = 123; c.d = (var b); })))
-  (test "op" (typeEq ntypes.nix-op (op."//" [])))
-  (test "conds" (typeEq ntypes.nix-conds (conds [(ifthen false 1) (ifthen true 2)] true)))
-  (test "let-in" (typeEq ntypes.nix-let-in (letin { a = 1; } 2)))
+  (test "prim (null)" (typeEq ntypes.prim null))
+  (test "prim (int)" (typeEq ntypes.prim 123))
+  (test "prim (float)" (typeEq ntypes.prim 123.123))
+  (test "prim (bool)" (typeEq ntypes.prim true))
+  (test "prim (string)" (typeEq ntypes.prim "abc"))
+  (test "prim (path)" (typeEq ntypes.prim ./default.nix))
+  (test "var" (typeEq ntypes.var (var "a")))
+  (test "access" (typeEq ntypes.access (acc (var "a") "b.c" )))
+  (test "attrs" (typeEq ntypes.attrs { a = 123; b.c = 123; }))
+  (test "rec-attrs" (typeEq ntypes.attrs (recc { a = (var b); b = 123; c.d = (var b); })))
+  (test "op" (typeEq ntypes.op (op."//" [])))
+  (test "conds" (typeEq ntypes.conds (conds [(ifthen false 1) (ifthen true 2)] true)))
+  (test "let-in" (typeEq ntypes.let-in (letin { a = 1; } 2)))
   (test "function"
     (typeEq
-      ntypes.nix-function 
+      ntypes.function 
       (lambda
         (args { a = null; b = "test"; } null false) 
         (var "b"))))
   (test "application"
     (typeEq
-      ntypes.nix-application
+      ntypes.application
         (app
           (lambda "a" (var "a"))
           1)))
   (test "import"
     (typeEq
-      ntypes.nix-import
+      ntypes.import
         (importt ./default.nix)))
   (test "raw"
     (typeEq
-      ntypes.nix-raw
+      ntypes.raw
         (raw "x: x.a.b.c.d")))
 ]

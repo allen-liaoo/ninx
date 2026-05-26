@@ -16,20 +16,6 @@ let
     concatMap
     foldlAttrs;
 
-  evalNixStr = expr:
-    let
-      script =
-        nixpkgs.runCommand "eval-result.json"
-          {
-            requiredSystemFeatures = [ "recursive-nix" ];
-            NIX_PATH = "nixpkgs=${<nixpkgs>}";
-          }
-          ''
-            ${nixpkgs.nix}/bin/nix --extra-experimental-features nix-command eval --json --show-trace --expr '${expr}' > $out
-          '';
-    in
-    (builtins.fromJSON (builtins.readFile script));
-
   # collect options of a modules options set
   # returns list of { path, val }
   aggregateOptions = pathPrefix:
@@ -65,7 +51,6 @@ let
 in
 {
   inherit
-    evalNixStr
     aggregateOptions
     submoduleWithAttrCheck;
 }

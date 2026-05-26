@@ -1,48 +1,93 @@
 {
-  nixpkgs ? import <nixpkgs> { },
+  nixpkgsPath ? <nixpkgs>, # necessary for using when evaluating nix str
+  nixpkgs ? import nixpkgsPath { },
   lib ? nixpkgs.lib,
-  ninx ? import ../default.nix { },
+  ninxPath ? ../., # for evaluating nix str
+  ninx ? import ninxPath { },
   ninx-lib ? import ../lib.nix { },
   ...
 }:
 
 let
-  test = name: t: {
-    inherit name;
-    run = { filename, index }:
-      if !t then 
-        builtins.warn "${filename}: Test ${toString index} \"${name}\" failed\n" t
-      else t;
-  };
-  testEq = name: expected: actual: {
-    inherit name;
-    run = { filename, index }: 
-      let 
-        result = expected == actual;
-      in
-      if !result then
-        builtins.warn ''
-          ${filename}: Test ${toString index} "${name}" failed
-            Expected: ${builtins.toJSON expected},
-            Actual: ${builtins.toJSON actual}
-          '' result
-      else result;
-  };
-  args = {
+  globalArgs = {
     inherit
       nixpkgs
+      nixpkgsPath
       lib
       ninx
+      ninxPath
       ninx-lib
+      testWithMsg
       test
       testEq
+      evalNixStr
       ;
   };
 
+  testWithMsg = name: cond: msg: {
+    inherit name;
+    run = { filename, index }:
+      if !cond then 
+        builtins.warn
+          ''
+            ${filename}: Test ${toString index} "${name}" failed
+            ${msg}
+          ''
+          cond
+      else cond;
+  };
+
+  test = name: cond: testWithMsg name cond "";
+
+  testEq = name: expected: actual: 
+    testWithMsg name (expected == actual) ''
+      Expected: ${builtins.toJSON expected},
+      Actual: ${builtins.toJSON actual}
+    '';
+
+  # Evaluates a nix code string, returns result or error; build never fails
+  evalNixStr = 
+    {
+      args ? [ "--json" "--show-trace" "--impure" ],
+      name ? "eval",
+      expr,
+    }:
+    let
+      args' = lib.concatStringsSep " " args;
+      script =
+        nixpkgs.runCommand name
+          {
+            requiredSystemFeatures = [ "recursive-nix" ];
+          }
+          ''
+            mkdir -p "$out"
+
+            if ${nixpkgs.nix}/bin/nix \
+              --extra-experimental-features nix-command \
+              eval ${args'} \
+              --expr '${expr}' \
+              > "$out/result.json" \
+              2> "$out/error"
+            then
+              echo 0 > "$out/exit-code"
+            else
+              echo $? > "$out/exit-code"
+            fi
+
+            exit 0
+          '';
+    in
+    {
+      success = 0 == lib.toInt (builtins.readFile "${script}/exit-code");
+      result = builtins.fromJSON (builtins.readFile "${script}/result.json");
+      error = builtins.readFile "${script}/error";
+    };
+
+  # run tests in a file, then collect, print, and return stats
   testFile =
     filename:
       let
-        tests = import ./${filename} args;
+        tests = import ./${filename} globalArgs;
         stats = lib.foldl
           (
             { passed, failed, index }:
@@ -63,6 +108,7 @@ let
       in
       builtins.trace "${filename}: ${toString stats.passed}/${toString (builtins.length tests)} tests passed\n" stats;
 
+  # run testFile on directory (list of files)
   testDir = dirname: map (f: testFile (dirname + "/" + f)) (import ./${dirname});
 in
 
@@ -73,8 +119,8 @@ lib.foldl
   (
     [
       (testFile "types.nix")
+      (testFile "serialize-eval.nix")
       (testFile "merge.nix")
-      # (testFile "serialize-eval.nix")
     ] 
     ++ (testDir "lib")
   )

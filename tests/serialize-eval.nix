@@ -1,51 +1,61 @@
 {
-  nixpkgs,
   ninx,
-  ninx-lib,
   testEq,
+  evalNixStr,
   ...
 }:
 
 let
-  # serialize and evaluate code
-  serEval = nix-expr: ninx-lib.evalNixStr (ninx.serialize nix-expr);
+  serEval = name: nix-expr:
+    (evalNixStr { inherit name; expr = ninx.serialize nix-expr; }).result;
+
+  # testSerEq on serialized and evaluated code
+  testSerEq = 
+    testName: expected: nix-expr:
+      testEq testName expected (serEval testName nix-expr);
 in
 with ninx;
 [
-  (testEq "number" 123 (serEval 123))
+  (testSerEq "null" null null)
 
-  (testEq "float" 123.123 (serEval 123.123))
+  (testSerEq "number" 123 123)
 
-  (testEq "true" true (serEval true))
+  (testSerEq "float" 123.123 123.123)
 
-  (testEq "false" false (serEval false))
+  (testSerEq "true" true true)
 
-  (testEq "string" "a" (serEval "a"))
+  (testSerEq "false" false false)
 
-  (testEq "attrs" { a = 1; } (serEval { a = 1; }))
+  (testSerEq "string" "a" "a")
 
   (testEq
+    "path" 
+    (builtins.readFile ./default.nix) 
+    (builtins.readFile (serEval "path" ./default.nix))
+  )
+
+  (testSerEq "list" 
+    [ 0 0.1 true "abc" { a.b = 1; } [ null ] ]
+    [ 0 0.1 true "abc" { a.b = 1; } [ null ] ])
+
+  (testSerEq "attrs" { a = 1; } { a = 1; })
+
+  (testSerEq
     "rec-attrs"
     rec {
       a = b;
       b = 1;
     }
-    (serEval (rec-set {
+    (recc {
       a = var "b";
       b = 1;
-    }))
+    })
   )
 
-  (testEq
-    "path" 
-    (builtins.readFile ./default.nix) 
-    (builtins.readFile (serEval ./default.nix))
-  )
-
-  (testEq
+  (testSerEq
     "operators"
     10
-    (serEval (
+    (
       op."+" [
         (op."*" [
           2
@@ -53,11 +63,11 @@ with ninx;
         ])
         4
       ]
-    ))
+    )
   )
 
 
-  (testEq
+  (testSerEq
     "if-then-else"
     (
       if false then
@@ -67,49 +77,47 @@ with ninx;
       else
         3
     )
-    (serEval (
-      conds [
+    (conds [
         (ifthen false 1)
         (ifthen true 2)
       ] 3
-    ))
+    )
   )
 
-  (testEq
+  (testSerEq
     "let-in"
     {
       a = 1;
       b.c = 2;
       b.d = 3;
     }
-    (serEval (
-      letin {
+    (letin {
         r = {
           a = 1;
           b.c = 2;
           b.d = 3;
         };
       } (var "r")
-    ))
+    )
   )
 
 
-  (testEq
+  (testSerEq
     "application"
     7
-    (serEval (
+    (
       app (raw "builtins.add") [
         3
         4
       ]
-    ))
+    )
   )
 
 
-  (testEq
+  (testSerEq
     "fibonacci"
     8
-    (serEval (
+    (
       letin {
         fib = lambda "n" (
           let
@@ -127,21 +135,21 @@ with ninx;
                 e
               ];
           in
-          conds
-            [
-              (ifthen (op."||" [
-                (eqn 1)
-                (eqn 0)
-              ]) (var "n"))
+            conds
+          [
+            (ifthen (op."||" [
+              (eqn 1)
+              (eqn 0)
+            ]) (var "n"))
+          ]
+          (
+            op."+" [
+              (app "fib" (subn 1))
+              (app "fib" (subn 2))
             ]
-            (
-              op."+" [
-                (app "fib" (subn 1))
-                (app "fib" (subn 2))
-              ]
-            )
+          )
         );
       } (app "fib" 6)
-    ))
+    )
   )
 ]

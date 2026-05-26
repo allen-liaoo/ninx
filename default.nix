@@ -21,6 +21,7 @@ let
   inherit (lib)
     types
     pipe
+    fix
     findFirst
     genAttrs
     concatStrings
@@ -33,115 +34,229 @@ let
     submoduleWithAttrCheck;
 
   # Ergonomic Nix expressions
-  var = __var: { inherit __var; };
-  rec-set = a: { __rec = true; } // a;
-  acc = __set: __path: {
-    inherit __set __path;
+  ergo = {
+    var = __var: { inherit __var; };
+    recc = a: { __rec = true; } // a;
+    acc = __set: __path: {
+      inherit __set __path;
+    };
+    op = genAttrs (attrNames ops) (
+      __op: __args: {
+        inherit __op __args;
+      }
+    );
+    conds = __conds: __else: {
+      inherit __conds __else;
+    };
+    ifthen = __if: __then: {
+      inherit __if __then;
+    };
+    letin = __let: __in: {
+      inherit __let __in;
+    };
+    lambda = __arg: __body: {
+      inherit __arg __body;
+    };
+    args = attrs: __at: __varargs: attrs // { # when function argument is an attrset pattern
+      inherit __at __varargs;
+    };
+    app = f: as: {
+      __app =
+        if isList as then
+          [ f ] ++ as
+        else
+          [
+            f
+            as
+          ];
+    };
+    importt = __import: { inherit __import; };
+    raw = __raw: { inherit __raw; };
   };
-  op = genAttrs (attrNames ops) (
-    __op: __args: {
-      inherit __op __args;
-    }
-  );
-  conds = __conds: __else: {
-    inherit __conds __else;
-  };
-  ifthen = __if: __then: {
-    inherit __if __then;
-  };
-  letin = __let: __in: {
-    inherit __let __in;
-  };
-  lambda = __arg: __body: {
-    inherit __arg __body;
-  };
-  args = attrs: __at: __varargs: attrs // { # when function argument is an attrset pattern
-    inherit __at __varargs;
-  };
-  app = f: as: {
-    __app =
-      if isList as then
-        [ f ] ++ as
-      else
-        [
-          f
-          as
-        ];
-  };
-  importt = __import: { inherit __import; };
-  raw = __raw: { inherit __raw; };
 
   # Nix expression types
-  nix-expr = types.oneOf [
-      nix-prim
-      nix-var
-      nix-access
-      nix-op
-      nix-conds
-      nix-let-in
-      nix-function
-      nix-application
-      nix-import
-      nix-raw
-      nix-attrs 
-      # order matters
-      # since nix-attrs is free-form, we need it to be the last so attrset matching previous types will be used first
+
+  # nix-types lookup order
+  # since nix-attrs is free-form, we need it to be the last so attrset matching previous types will be used first
+  nix-types-ord = [
+    "prim"
+    "var"
+    "access"
+    "op"
+    "conds"
+    "let-in"
+    "function"
+    "application"
+    "import"
+    "raw"
+    "attrs" # last
   ];
 
-  nix-prim = types.nullOr (
-    with types;
-    oneOf [
-      bool
-      int
-      float
-      str
-      path
-    ]
-  );
+  nix-types-ordered = map (t: nix-types.${t}) nix-types-ord;
 
-  nix-var = submoduleWithAttrCheck {
-    options = {
-      __var = mkOption {
-        type = types.str;
+  getType =
+    e:
+    if isAttrs e then
+      findFirst (t: nix-types.${t}.check e) "attrs" nix-types-ord
+    else
+      "prim";
+
+
+  nix-types = fix (self: {
+    expr = types.oneOf nix-types-ordered;
+
+    prim = types.nullOr (
+      with types;
+      oneOf [
+        bool
+        int
+        float
+        str
+        path
+        (listOf self.expr)
+      ]
+    );
+
+    var = submoduleWithAttrCheck {
+      options = {
+        __var = mkOption {
+          type = types.str;
+        };
       };
     };
-  };
-  specialAttrs.var = [ "__var" ];
 
-  nix-attrs = submoduleWithAttrCheck {
-    freeformType = types.attrsOf nix-expr;
-    options = {
-      __rec = mkOption {
-        type = types.bool;
-        default = false;
+    attrs = submoduleWithAttrCheck {
+      freeformType = types.attrsOf self.expr;
+      options = {
+        __rec = mkOption {
+          type = types.bool;
+          default = false;
+        };
       };
     };
-  };
+
+    access = submoduleWithAttrCheck {
+      options = {
+        __set = mkOption {
+          type = self.expr;
+        };
+        __path = mkOption {
+          type = types.separatedString ".";
+        };
+      };
+    };
+
+    op = submoduleWithAttrCheck {
+      options = {
+        __op = mkOption {
+          type = types.enum (attrNames ops);
+        };
+        __args = mkOption {
+          type = types.listOf self.expr;
+        };
+      };
+    };
+
+    let-in = submoduleWithAttrCheck {
+      options = {
+        __let = mkOption {
+          type = types.attrsOf self.expr;
+        };
+        __in = mkOption {
+          type = self.expr;
+        };
+      };
+    };
+
+    conds = submoduleWithAttrCheck {
+      options = {
+        __conds = mkOption {
+          type =
+            with types;
+            listOf submoduleWithAttrCheck {
+              __if = mkOption {
+                type = self.expr;
+              };
+              __then = mkOption {
+                type = self.expr;
+              };
+            };
+        };
+        __else = mkOption {
+          type = self.expr;
+        };
+      };
+    };
+
+    function = submoduleWithAttrCheck {
+      options = {
+        __arg =
+          let
+            argsSet = submoduleWithAttrCheck {
+              freeformType = types.attrsOf self.expr; # if null, treat as nonoptional
+              options = {
+                # @-pattern
+                __at = mkOption {
+                  type = types.str;
+                  default = null;
+                };
+                # ... pattern
+                __varargs = mkOption {
+                  type = types.bool;
+                  default = false; # TODO: add check
+                };
+              };
+            };
+          in
+          mkOption {
+            type = with types; either str (either (submodule argsSet));
+          };
+        __body = mkOption {
+          type = self.expr;
+        };
+      };
+    };
+
+    application = submoduleWithAttrCheck {
+      options = {
+        __app = mkOption {
+          type = types.listOf self.expr;
+        };
+      };
+    };
+
+    import = submoduleWithAttrCheck {
+      options = {
+        __import = mkOption {
+          type = self.expr;
+        };
+      };
+    };
+
+    raw = submoduleWithAttrCheck {
+      options = {
+        __raw = mkOption {
+          type = types.str;
+        };
+      };
+    };
+  });
+
+  # Utilities
   specialAttrs.attrs = [ "__rec" ];
-
-  nix-access = submoduleWithAttrCheck {
-    options = {
-      __set = mkOption {
-        type = nix-expr;
-      };
-      __path = mkOption {
-        type = types.separatedString ".";
-      };
-    };
-  };
-  specialAttrs.access = [
-    "__set"
-    "__path"
+  specialAttrs.function-arg = [
+    "__at"
+    "__varargs"
   ];
+  strip = t: e: removeAttrs e specialAttrs.${t};
 
   ops = {
     # may be useful in the future if we eval
     "." = set: path: set.${path};
-    ".or" =
-      set: path: _or:
-      set.${path} or _or;
+    ".or" = set: path: _or: set.${path} or _or;
     "+" = e1: e2: e1 + e2;
     "-" = n1: n2: n1 - n2;
+    "~" = n1: (- n1); # negative
     "*" = n1: n2: n1 * n2;
     "/" = n1: n2: n1 / n2;
     "!" = n: !n;
@@ -158,152 +273,21 @@ let
     "|>" = e1: e2: e2 e1;
     "<|" = e1: e2: e1 e2;
   };
-  nix-op = submoduleWithAttrCheck {
-    options = {
-      __op = mkOption {
-        type = types.enum (attrNames ops);
-      };
-      __args = mkOption {
-        type = types.listOf nix-expr;
-      };
-    };
-  };
-  specialAttrs.op = [
-    "__op"
-    "__args"
-  ];
-
-  nix-let-in = submoduleWithAttrCheck {
-    options = {
-      __let = mkOption {
-        type = types.attrsOf nix-expr;
-      };
-      __in = mkOption {
-        type = nix-expr;
-      };
-    };
-  };
-  specialAttrs.let-in = [
-    "__let"
-    "__in"
-  ];
-
-  nix-conds = submoduleWithAttrCheck {
-    options = {
-      __conds = mkOption {
-        type =
-          with types;
-          listOf submoduleWithAttrCheck {
-            __if = mkOption {
-              type = nix-expr;
-            };
-            __then = mkOption {
-              type = nix-expr;
-            };
-          };
-      };
-      __else = mkOption {
-        type = nix-expr;
-      };
-    };
-  };
-  specialAttrs.conds = [
-    "__conds"
-    "__else"
-  ];
-  specialAttrs.cond = [
-    "__if"
-    "__then"
-  ];
-
-  nix-function = submoduleWithAttrCheck {
-    options = {
-      __arg =
-        let
-          argsSet = submoduleWithAttrCheck {
-            freeformType = types.attrsOf nix-expr; # if null, treat as nonoptional
-            options = {
-              # @-pattern
-              __at = mkOption {
-                type = types.str;
-                default = null;
-              };
-              # ... pattern
-              __varargs = mkOption {
-                type = types.bool;
-                default = false; # TODO: add check
-              };
-            };
-          };
-        in
-        mkOption {
-          type = with types; either str (either (submodule argsSet));
-        };
-      __body = mkOption {
-        type = nix-expr;
-      };
-    };
-  };
-  specialAttrs.function = [
-    "__arg"
-    "__body"
-  ];
-  specialAttrs.function-arg = [
-    "__at"
-    "__varargs"
-  ];
-
-  nix-application = submoduleWithAttrCheck {
-    options = {
-      __app = mkOption {
-        type = types.listOf nix-expr;
-      };
-    };
-  };
-  specialAttrs.application = [ "__app" ];
-
-  nix-import = submoduleWithAttrCheck {
-    options = {
-      __import = mkOption {
-        type = nix-expr;
-      };
-    };
-  };
-  specialAttrs.import = [ "__import" ];
-
-  nix-raw = submoduleWithAttrCheck {
-    options = {
-      __raw = mkOption {
-        type = types.str;
-      };
-    };
-  };
-  specialAttrs.raw = [ "__raw" ];
-
-  # Utilities
-  strip = t: e: removeAttrs e specialAttrs.${t};
-
-  getType =
-    e:
-    if isAttrs e then
-      findFirst (t: all (attr: hasAttr attr e) specialAttrs.${t}) "attrs" (attrNames specialAttrs)
-    else
-      "prim";
 
   # Nix expression to string
   serialize = {
     __functor = self: e: self.${getType e} e;
 
-    prim =
-      e:
-      if isString e then
-        ''"${e}"''
-      else if e == true then
-        "true"
-      else if e == false then
-        "false"
-      else
-        toString e;
+    prim = {
+      __functor = self: e: self.${builtins.typeOf e} e;
+      null = _: "null";
+      bool = e: if e == true then "true" else "false";
+      int = toString;
+      float = toString;
+      string = e: ''"${e}"'';
+      path = toString;
+      list = e: "[" + concatStringsSep " " (map serialize e) + "]";
+    };
 
     var = e: e.__var;
 
@@ -348,9 +332,9 @@ let
               "."
               snd
             ]
-          else if e.__op == "!" then
+          else if e.__op == "!" || e.__op == "~" then
             [
-              e.__op
+              (if e.__op == "~" then "-" else e.__op)
               " "
               fst
             ]
@@ -396,7 +380,7 @@ let
           if isString e.__arg then
             e.__arg
           else
-            (pipe (strip "function" e.__arg) [
+            (pipe (strip "function-arg" e.__arg) [
               (mapAttrsToList (
                 k: v: ''
                   ${k}${if isNull v then "" else " ? " + serialize v},;
@@ -434,37 +418,10 @@ let
   };
 
 in
-{
+ergo // {
   inherit
-    var
-    rec-set
-    acc
-    op
-    conds
-    ifthen
-    letin
-    lambda
-    args
-    app
-    importt
-    raw
     serialize
     getType
     ;
-  types = {
-    inherit
-      nix-expr
-      nix-prim
-      nix-var
-      nix-attrs 
-      nix-access
-      nix-op
-      nix-conds
-      nix-let-in
-      nix-function
-      nix-application
-      nix-import
-      nix-raw
-      ;
-  };
+  types = nix-types;
 }

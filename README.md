@@ -28,14 +28,14 @@ Primitive values can be used as is. This includes:
 Additionally, ninx provides ergnomic-ish helpers:
 ```nix
 inherit (ninx)
-  var rec-set acc op cond ifthen
+  var recc acc op cond ifthen
   letin lambda app importt raw;
 
 # variables
 var "a"
 
 # recursive attribute set
-rec-set { a = var "b"; b.c = 2; } # rec { a = b; b.c = 2; }
+recc { a = var "b"; b.c = 2; } # rec { a = b; b.c = 2; }
 
 # attribute access
 # TODO: interpret string as variable; allow list of attrs
