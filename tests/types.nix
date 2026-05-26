@@ -21,7 +21,7 @@ with ninx;
   (test "access" (typeEq ntypes.access (acc (var "a") "b.c" )))
   (test "attrs" (typeEq ntypes.attrs { a = 123; b.c = 123; }))
   (test "rec-attrs" (typeEq ntypes.attrs (recc { a = (var b); b = 123; c.d = (var b); })))
-  (test "op" (typeEq ntypes.op (op."//" [])))
+  (test "op" (typeEq ntypes.op (op."//" {} {})))
   (test "conds" (typeEq ntypes.conds (conds [(ifthen false 1) (ifthen true 2)] true)))
   (test "let-in" (typeEq ntypes.let-in (letin { a = 1; } 2)))
   (test "function"

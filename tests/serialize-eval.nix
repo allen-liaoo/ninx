@@ -52,19 +52,7 @@ with ninx;
     })
   )
 
-  (testSerEq
-    "operators"
-    10
-    (
-      op."+" [
-        (op."*" [
-          2
-          3
-        ])
-        4
-      ]
-    )
-  )
+  (testSerEq "operators" 10 (op."+" (op."*" 2 3) 4))
 
 
   (testSerEq
@@ -122,31 +110,15 @@ with ninx;
         fib = lambda "n" (
           let
             n = var "n";
-            eqn =
-              e:
-              op."==" [
-                n
-                e
-              ];
-            subn =
-              e:
-              op."-" [
-                n
-                e
-              ];
+            eqn = e: op."==" n e;
+            subn = e: op."-" n e;
           in
             conds
           [
-            (ifthen (op."||" [
-              (eqn 1)
-              (eqn 0)
-            ]) (var "n"))
+            (ifthen (op."||" (eqn 1) (eqn 0)) (var "n"))
           ]
           (
-            op."+" [
-              (app "fib" (subn 1))
-              (app "fib" (subn 2))
-            ]
+            op."+" (app "fib" (subn 1)) (app "fib" (subn 2))
           )
         );
       } (app "fib" 6)

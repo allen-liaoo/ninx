@@ -40,10 +40,18 @@ let
     acc = __set: __path: {
       inherit __set __path;
     };
+    # function that takes n-args for n-arity operator
     op = genAttrs (attrNames ops) (
-      __op: __args: {
-        inherit __op __args;
-      }
+      __op: 
+        let
+          mkFunc = arity: __args:
+            if arity == 0 then
+              { inherit __op __args; }
+            else
+              (arg: mkFunc (arity - 1) (__args ++ [ arg ]));
+          arity = ops.${__op};
+        in
+        mkFunc arity []
     );
     conds = __conds: __else: {
       inherit __conds __else;
@@ -250,28 +258,28 @@ let
   ];
   strip = t: e: removeAttrs e specialAttrs.${t};
 
+  # operator and their arity
   ops = {
-    # may be useful in the future if we eval
-    "." = set: path: set.${path};
-    ".or" = set: path: _or: set.${path} or _or;
-    "+" = e1: e2: e1 + e2;
-    "-" = n1: n2: n1 - n2;
-    "~" = n1: (- n1); # negative
-    "*" = n1: n2: n1 * n2;
-    "/" = n1: n2: n1 / n2;
-    "!" = n: !n;
-    "//" = set: new: set // new;
-    "<" = e1: e2: e1 < e2;
-    ">" = e1: e2: e1 > e2;
-    "<=" = e1: e2: e1 <= e2;
-    ">=" = e1: e2: e1 >= e2;
-    "==" = e1: e2: e1 == e2;
-    "!=" = e1: e2: e1 != e2;
-    "&&" = e1: e2: e1 && e2;
-    "||" = e1: e2: e1 || e2;
-    "->" = e1: e2: !e1 || e2;
-    "|>" = e1: e2: e2 e1;
-    "<|" = e1: e2: e1 e2;
+    "." = 2;
+    ".or" = 3;
+    "+" = 2;
+    "-" = 2;
+    "~" = 1; # negative
+    "*" = 2;
+    "/" = 2;
+    "!" = 1;
+    "//" = 2;
+    "<" = 2;
+    ">" = 2;
+    "<=" = 2;
+    ">=" = 2;
+    "==" = 2;
+    "!=" = 2;
+    "&&" = 2;
+    "||" = 2;
+    "->" = 2;
+    "|>" = 2;
+    "<|" = 2;
   };
 
   # Nix expression to string

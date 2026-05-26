@@ -42,8 +42,9 @@ recc { a = var "b"; b.c = 2; } # rec { a = b; b.c = 2; }
 acc (var "a") "b.c.d"          # a.b.c.d
 
 # operators
-op.".or" (var "a") "b" 1       # a.b or 1
+op."~" 1                       # - 1
 op."//" (var "a") { b = 2; }   # a // { b = 2; }
+op.".or" (var "a") "b" 1       # a.b or 1
 
 # conditionals
 cond [

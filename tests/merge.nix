@@ -51,14 +51,14 @@ let
         }).config.e
       '';
       evalRes = evalNixStr { name = testName; expr = evalCode; };
-      result = !evalRes.success && (builtins.match ".*${errorMsg}.*" evalRes.error) != null; # errors with expected msg
+      result = !evalRes.success && (builtins.match ".*${errorMsg}.*" evalRes.error) != null; # errors with expected msg substring
     in
     testWithMsg testName result "Code: ${code}\nGot error: \n${evalRes.error}";
 in
 with ninx;
 
 [
-  (testMergeError "prim-same-type" "conflicting definition values" [ (op."~" [1]) 2 ])
+  (testMergeError "prim-same-type" "conflicting definition values" [ (op."~" 1) 2 ])
   (testMergeError "prim-diff-type" "conflicting definition values" [ { a = 1; } 2 ])
 
   (testEq "attrs"
