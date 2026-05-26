@@ -31,27 +31,23 @@ let
     ;
 
   inherit (ninx-lib)
-    submoduleWithAttrCheck;
+    submoduleWithAttrCheck
+    ;
 
   # Ergonomic Nix expressions
   ergo = {
     var = __var: { inherit __var; };
     recc = a: { __rec = true; } // a;
-    acc = __set: __path: {
-      inherit __set __path;
-    };
     # function that takes n-args for n-arity operator
     op = genAttrs (attrNames ops) (
-      __op: 
-        let
-          mkFunc = arity: __args:
-            if arity == 0 then
-              { inherit __op __args; }
-            else
-              (arg: mkFunc (arity - 1) (__args ++ [ arg ]));
-          arity = ops.${__op};
-        in
-        mkFunc arity []
+      __op:
+      let
+        mkFunc =
+          arity: __args:
+          if arity == 0 then { inherit __op __args; } else (arg: mkFunc (arity - 1) (__args ++ [ arg ]));
+        arity = ops.${__op};
+      in
+      mkFunc arity [ ]
     );
     conds = __conds: __else: {
       inherit __conds __else;
@@ -65,9 +61,13 @@ let
     lambda = __arg: __body: {
       inherit __arg __body;
     };
-    args = attrs: __at: __varargs: attrs // { # when function argument is an attrset pattern
-      inherit __at __varargs;
-    };
+    args =
+      attrs: __at: __varargs:
+      attrs
+      // {
+        # when function argument is an attrset pattern
+        inherit __at __varargs;
+      };
     app = f: as: {
       __app =
         if isList as then
@@ -89,7 +89,6 @@ let
   nix-types-ord = [
     "prim"
     "var"
-    "access"
     "op"
     "conds"
     "let-in"
@@ -100,20 +99,16 @@ let
     "attrs" # last
   ];
 
-  nix-types-ordered = map (t: nix-types.${t}) nix-types-ord;
-
   getType =
-    e:
-    if isAttrs e then
-      findFirst (t: nix-types.${t}.check e) "attrs" nix-types-ord
-    else
-      "prim";
-
+    e: if isAttrs e then findFirst (t: nix-types.${t}.check e) "attrs" nix-types-ord else "prim";
 
   nix-types = fix (self: {
-    expr = types.oneOf nix-types-ordered;
+    expr = #types.addCheck
+      (types.oneOf (map (t: self.${t}) nix-types-ord))
+      #(x: true)
+      // { description = "nix expression"; }; # required to avoid inf rec as descriptions are eagerly evaled
 
-    prim = types.nullOr (
+    prim = (types.nullOr (
       with types;
       oneOf [
         bool
@@ -123,15 +118,15 @@ let
         path
         (listOf self.expr)
       ]
-    );
+    )) // { description = "nix primitive"; };
 
-    var = submoduleWithAttrCheck {
+    var = (submoduleWithAttrCheck {
       options = {
         __var = mkOption {
-          type = types.str;
+          type = types.uniq types.str;
         };
       };
-    };
+    }) // { description = "nix variable"; };
 
     attrs = submoduleWithAttrCheck {
       freeformType = types.attrsOf self.expr;
@@ -143,29 +138,18 @@ let
       };
     };
 
-    access = submoduleWithAttrCheck {
-      options = {
-        __set = mkOption {
-          type = self.expr;
-        };
-        __path = mkOption {
-          type = types.separatedString ".";
-        };
-      };
-    };
-
-    op = submoduleWithAttrCheck {
+    op = (submoduleWithAttrCheck {
       options = {
         __op = mkOption {
           type = types.enum (attrNames ops);
         };
         __args = mkOption {
-          type = types.listOf self.expr;
+          type = types.uniq (types.listOf self.expr);
         };
       };
-    };
+    }) // { description = "nix operator expression"; };
 
-    let-in = submoduleWithAttrCheck {
+    let-in = (submoduleWithAttrCheck {
       options = {
         __let = mkOption {
           type = types.attrsOf self.expr;
@@ -174,9 +158,9 @@ let
           type = self.expr;
         };
       };
-    };
+    }) // { description = "nix let-in"; };
 
-    conds = submoduleWithAttrCheck {
+    conds = (submoduleWithAttrCheck {
       options = {
         __conds = mkOption {
           type =
@@ -194,9 +178,9 @@ let
           type = self.expr;
         };
       };
-    };
+    }) // { description = "nix conditional"; };
 
-    function = submoduleWithAttrCheck {
+    function = (submoduleWithAttrCheck {
       options = {
         __arg =
           let
@@ -223,31 +207,32 @@ let
           type = self.expr;
         };
       };
-    };
+    }) // { description = "nix lambda"; };
 
-    application = submoduleWithAttrCheck {
+    application = (submoduleWithAttrCheck {
       options = {
         __app = mkOption {
-          type = types.listOf self.expr;
+          type = types.uniq (types.listOf self.expr);
         };
       };
-    };
+    }) // { description = "nix function call"; };
 
-    import = submoduleWithAttrCheck {
+    import = (submoduleWithAttrCheck {
       options = {
         __import = mkOption {
-          type = self.expr;
+          type = types.uniq self.expr;
         };
       };
-    };
+    }) // { description = "nix import"; };
 
-    raw = submoduleWithAttrCheck {
+    raw = (submoduleWithAttrCheck {
       options = {
         __raw = mkOption {
           type = types.str;
         };
       };
-    };
+    }) // { description = "raw nix expression"; };
+
   });
 
   # Utilities
@@ -301,21 +286,17 @@ let
 
     bindings =
       e:
-      "${
-        (pipe e [
-          (mapAttrsToList (
-            k: v: ''
-              ${k} = ${serialize v};
-            ''
-          ))
-          concatStrings
-        ])
-      }";
+      (pipe e [
+        (mapAttrsToList (
+          k: v: ''
+            ${k} = ${serialize v};
+          ''
+        ))
+        concatStrings
+      ]);
 
     attrs =
       e: (if e ? __rec && e.__rec then "rec " else "") + "{" + serialize.bindings (strip "attrs" e) + "}";
-
-    access = e: "${serialize e.__set}.${e.__path}";
 
     op =
       e:
@@ -426,7 +407,8 @@ let
   };
 
 in
-ergo // {
+ergo
+// {
   inherit
     serialize
     getType

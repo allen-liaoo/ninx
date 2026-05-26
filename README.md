@@ -28,7 +28,7 @@ Primitive values can be used as is. This includes:
 Additionally, ninx provides ergnomic-ish helpers:
 ```nix
 inherit (ninx)
-  var recc acc op cond ifthen
+  var recc op cond ifthen
   letin lambda app importt raw;
 
 # variables
@@ -37,14 +37,11 @@ var "a"
 # recursive attribute set
 recc { a = var "b"; b.c = 2; } # rec { a = b; b.c = 2; }
 
-# attribute access
-# TODO: interpret string as variable; allow list of attrs
-acc (var "a") "b.c.d"          # a.b.c.d
-
 # operators
+op."." { a.b = 1; } "a.b"      # { a.b = 1;}.a.b
+op.".or" (var "a") "b" 1       # a.b or 1
 op."~" 1                       # - 1
 op."//" (var "a") { b = 2; }   # a // { b = 2; }
-op.".or" (var "a") "b" 1       # a.b or 1
 
 # conditionals
 cond [
