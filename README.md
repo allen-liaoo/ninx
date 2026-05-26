@@ -3,6 +3,15 @@
 
 Nix expressions as a serializable data type in Nix
 
+## Why?
+Fair question. Why would you want to store encoded Nix code in Nix?
+
+One usage I have is: I want a flake templates repository like [this one](https://github.com/the-nix-way/dev-templates), but it is not DRY as it contains many `flake.nix` with similar setups.
+
+My goal is to utilize ninx to create a "flake-output" module to target `flake-files` for generating `flake.nix` templates so I don't have to repeat myself. I know it's like building an exosuit to open a pickle jar. But it's fun! I will update my progress here when I get to it.
+
+If you ~~are as crazy as me~~ have found other uses for ninx, please let me know!
+
 ## Usage
 ninx provides types for nix expressions via the Nixpkgs module system. You can use them like so:
 ```nix
@@ -83,19 +92,24 @@ raw ''
 
 Most expressions can be constructed directly as attrsets with special attributes prefixed by `__`. Read the [source](/default.nix) for more.
 
-## Why?
-Fair question. Why would you want to store encoded Nix code in Nix?
-
-One usage I have is: I want a flake templates repository like [this one](https://github.com/the-nix-way/dev-templates), but it is not DRY as it contains many `flake.nix` with similar setups.
-
-My goal is to utilize ninx to create a "flake-output" module to target `flake-files` for generating `flake.nix` templates so I don't have to repeat myself. I know it's like building an exosuit to open a pickle jar. But it's fun! I will update my progress here when I get to it.
-
-If you ~~are as crazy as me~~ have found other uses for ninx, please let me know!
+## Merge Behavior
+Because expressions are types in the module system, they can be merged.
++ Merges are allowed iff values are equal for these expressions:
+  + Primitive values (except lists, non-recursive attribute sets)
+  + Variables
+  + Import
+  + Raw
++ Lists are merged like `listOf` types.
++ Attribute sets (recursive or not) are merged like `attrsOf` types.
++ Conditionals: Conditions can be merged (like `listOf`), else case can be merged
++ Let-ins: bindings can be merged (like `attrsOf`), in clause can be merged
++ Functions: Argument (if attribute set) can be merged (like `attrsof`), functopn body can be merged
++ WIP: Merging operator expressions and applications (in place list merging)
 
 ## Status
 - [x] Options/Types definitions
   - [x] Type checking behavior
-  - [ ] Merging behavior (may need refactor away from submodules)
+  - [ ] Merging behavior
   - [ ] `with`, `assert`, `inherit`, comments: does anyone really need these?
 - [x] Ergnomic helpers
 - [x] Serialization

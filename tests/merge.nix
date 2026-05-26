@@ -118,6 +118,20 @@ with ninx;
     ])
   )
 
+   # variable
+   (testEq "var-merge-same" (var "a") (merge [ (var "a") (var "a") ]))
+   (testMergeError "var-merge-diff" "conflicting definition values" [
+     (var "a")
+     (var "b")
+   ])
+
+   # import
+   (testEq "import-merge-same" (importt ./default.nix) (merge [ (importt ./default.nix) (importt ./default.nix) ]))
+   (testMergeError "import-merge-diff" "conflicting definition values" [
+     (importt ./default.nix)
+     (importt ./merge.nix)
+   ])
+
   # Unmergeable expressions
 
   # this case produces a weird error message because they are different unmergeable types, but the code is not wrong
@@ -126,12 +140,6 @@ with ninx;
     # if I put "a" here instead of attrset, the error msg makes sense (defined multiple times), not sure why
     { a = 1; }
     2
-  ])
-
-  # variable
-  (testMergeError "var-unmergeable" "defined multiple times" [
-    (var "a")
-    (var "b")
   ])
 
   # operator
@@ -144,12 +152,6 @@ with ninx;
   (testMergeError "app-unmergeable" "defined multiple times" [
     (app (raw "builtins.add") 1)
     (app (raw "builtins.add") 2)
-  ])
-
-  # import
-  (testMergeError "import-unmergeable" "defined multiple times" [
-    (importt ./default.nix)
-    (importt ./merge.nix)
   ])
 
   # Mergeable expressions (interesting cases)

@@ -108,9 +108,7 @@ let
     e: if isAttrs e then findFirst (t: nix-types.${t}.check e) "attrs" nix-types-ord else "prim";
 
   nix-types = fix (self: {
-    expr = #types.addCheck
-      (types.oneOf (map (t: self.${t}) nix-types-ord))
-      #(x: true)
+    expr = types.oneOf (map (t: self.${t}) nix-types-ord)
       // { description = "nix expression"; }; # required to avoid inf rec as descriptions are eagerly evaled
 
     prim = (types.nullOr (
@@ -128,7 +126,7 @@ let
     var = (submoduleWithAttrCheck {
       options = {
         __var = mkOption {
-          type = types.uniq types.str;
+          type = types.str;
         };
       };
     }) // { description = "nix variable"; };
@@ -227,7 +225,7 @@ let
     import = (submoduleWithAttrCheck {
       options = {
         __import = mkOption {
-          type = types.uniq self.expr;
+          type = self.expr;
         };
       };
     }) // { description = "nix import"; };
