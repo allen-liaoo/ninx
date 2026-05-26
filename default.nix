@@ -37,6 +37,9 @@ let
   # Ergonomic Nix expressions
   ergo = {
     var = __var: { inherit __var; };
+    # constructs an attrset (for testing)
+    attrs = a: { __rec = false; } // a;
+    # recursive attrset
     recc = a: { __rec = true; } // a;
     # function that takes n-args for n-arity operator
     op = genAttrs (attrNames ops) (
@@ -44,7 +47,9 @@ let
       let
         mkFunc =
           arity: __args:
-          if arity == 0 then { inherit __op __args; } else (arg: mkFunc (arity - 1) (__args ++ [ arg ]));
+          if arity == 0 then 
+            { inherit __op __args; } 
+          else (arg: mkFunc (arity - 1) (__args ++ [ arg ]));
         arity = ops.${__op};
       in
       mkFunc arity [ ]
@@ -165,14 +170,16 @@ let
         __conds = mkOption {
           type =
             with types;
-            listOf submoduleWithAttrCheck {
-              __if = mkOption {
-                type = self.expr;
+            nonEmptyListOf (submoduleWithAttrCheck {
+              options = {
+                __if = mkOption {
+                  type = self.expr;
+                };
+                __then = mkOption {
+                  type = self.expr;
+                };
               };
-              __then = mkOption {
-                type = self.expr;
-              };
-            };
+            });
         };
         __else = mkOption {
           type = self.expr;
@@ -189,7 +196,7 @@ let
               options = {
                 # @-pattern
                 __at = mkOption {
-                  type = types.str;
+                  type = types.nullOr types.str;
                   default = null;
                 };
                 # ... pattern
@@ -201,7 +208,7 @@ let
             };
           in
           mkOption {
-            type = with types; either str (either (submodule argsSet));
+            type = with types; either str argsSet;
           };
         __body = mkOption {
           type = self.expr;
@@ -368,15 +375,16 @@ let
         ${
           if isString e.__arg then
             e.__arg
-          else
-            (pipe (strip "function-arg" e.__arg) [
-              (mapAttrsToList (
-                k: v: ''
-                  ${k}${if isNull v then "" else " ? " + serialize v},;
-                ''
-              ))
-            ])
-        }:
+          else ''
+            {${(mapAttrsToList (
+              k: v: ''
+                ${k}${if isNull v then "" else " ? " + serialize v},
+              ''
+            ) (strip "function-arg" e.__arg))}
+            ${if e.__varargs then "..." else ""}}
+            ${if e.__at != null then "@${e.__at}" else ""}
+          ''}
+        :
         ${serialize e.__body}
       )
     '';

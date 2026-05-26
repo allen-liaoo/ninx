@@ -29,7 +29,7 @@ Additionally, ninx provides ergnomic-ish helpers:
 ```nix
 inherit (ninx)
   var recc op cond ifthen
-  letin lambda app importt raw;
+  letin lambda args app importt raw;
 
 # variables
 var "a"
@@ -61,10 +61,11 @@ letin { x = (app (var "f") (var "x")); } (var "x")    # fix point! let x = f x; 
 
 # functions
 lambda "x" (var "x")   # identity function, (x: x)
-# you can also use attrset pattern in the argument: optional arguments, @-pattern and ...-pattern (varargs)
+# you can also use attrset pattern in the argument:
+#   optional arguments, @-pattern and ...-pattern (varargs)
 # below are equivalent to:
 # ({ a ? 2, b, ... }@args: b)
-lambda { a = 2; b = null; __at = "args"; __varargs= true; } (var "b")
+lambda { a = 2; b = null; __at = "args"; __varargs = true; } (var "b")
 lambda (args { a = 2; b = null; } "args" true) (var "b")
 
 # function application
@@ -85,7 +86,7 @@ Most expressions can be constructed directly as attrsets with special attributes
 ## Why?
 Fair question. Why would you want to store encoded Nix code in Nix?
 
-One usage I have is: I want a flake templates repository like [this one](https://github.com/the-nix-way/dev-templates), but it is not DRY as it contains many `flake.nix` with similary setups.
+One usage I have is: I want a flake templates repository like [this one](https://github.com/the-nix-way/dev-templates), but it is not DRY as it contains many `flake.nix` with similar setups.
 
 My goal is to utilize ninx to create a "flake-output" module to target `flake-files` for generating `flake.nix` templates so I don't have to repeat myself. I know it's like building an exosuit to open a pickle jar. But it's fun! I will update my progress here when I get to it.
 

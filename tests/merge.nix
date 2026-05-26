@@ -61,7 +61,7 @@ in
 with ninx;
 
 [
-  # Primitive type merging tests
+  # Primitive expressions (common: allow merging when equal)
   
   # null
   (testEq "prim-null-same" null (merge [ null null ]))
@@ -92,18 +92,17 @@ with ninx;
     ./merge.nix
   ])
   
-  # list of prims
+  # list of prims (just like listOf)
   (testEq "prim-list-merge" [ 1 2 3 1 2 3 ] (merge [ [ 1 2 3 ] [ 1 2 3 ] ]))
   (testEq "prim-list-mkBefore" [ 1 2 3 4 5 6 ] (merge [ (lib.mkBefore [ 1 2 3 ]) [ 4 5 6 ] ]))
   (testEq "prim-list-mkAfter" [ 1 2 3 4 5 6 ] (merge [ [ 1 2 3 ] (lib.mkAfter [ 4 5 6 ]) ]))
 
-  # attrs
+  # attrs (merge however u'd like!)
   (testEq "attrs"
-    {
-      __rec = false;
+    (attrs {
       a = 1;
       b = 2;
-    }
+    })
     (merge [
       { a = 1; }
       { b = 2; }
@@ -119,7 +118,7 @@ with ninx;
     ])
   )
 
-  # Unmergeable types
+  # Unmergeable expressions
 
   # this case produces a weird error message because they are different unmergeable types, but the code is not wrong
   # TypeError: The option `e` is neither a value of type ... or ...
@@ -152,5 +151,61 @@ with ninx;
     (importt ./default.nix)
     (importt ./merge.nix)
   ])
+
+  # Mergeable expressions (interesting cases)
+
+  # let-in merging - merge let bindings
+  (testEq "letin-merge-bindings"
+    (letin { a = 1; b = 2; c = 3; } 99)
+    (merge [
+      (letin { a = 1; b = 2; } 99)
+      (letin { c = 3; } 99)
+    ])
+  )
+
+   # let-in merging - merge "in" expressions (attrsets)
+  (testEq "letin-merge-in"
+    (letin { a = 10; b = 20; } (attrs { x = 1; y = 2; }))
+    (merge [
+      (letin { a = 10; } { x = 1; })
+      (letin { b = 20; } { y = 2; })
+    ])
+  )
+
+  # conditional merging - merge conditions list and else
+  (testEq "conds-merge"
+    (conds [ (ifthen false 1) (ifthen true 2) (ifthen false 3) ] (attrs { x = 1; y = 2; }))
+    (merge [
+      (conds [ (ifthen false 1) (ifthen true 2) ] { x = 1; })
+      (conds (lib.mkAfter [ (ifthen false 3) ]) { y = 2; })
+    ])
+  )
+
+  # function merging - merge function arguments
+  (testEq "function-merge-args"
+    (lambda (args { a = null; b = 1; c = 2; } null false) 99)
+    (merge [
+      (lambda { a = null; b = 1; } 99)
+      (lambda { a = null; c = 2; } 99)
+    ])
+  )
+
+  # function merging with patterns 
+  (testEq "function-merge-args-patterns"
+    (lambda (args { a = null; b = 1; c = null; } "attrs" true) 99)
+    (merge [
+      (lambda (args { a = null; b = 1; } "attrs" true) 99)
+      (lambda (args { a = null; c = null; } "attrs" true) 99)
+    ])
+  )
+
+  # function merging - merge function bodies (when they're attrsets)
+  (testEq "function-merge-body"
+    (lambda "x" (attrs { a = 1; b = 2; }))
+    (merge [
+      (lambda "x" { a = 1; })
+      (lambda "x" { b = 2; })
+    ])
+  )
 
 ]
