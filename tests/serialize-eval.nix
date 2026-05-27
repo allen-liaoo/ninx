@@ -9,7 +9,7 @@
 let
   serEval =
     name: nix-expr:
-    (ninx-test-lib.evalNixStr {
+    (ninx-test-lib.evalNix {
       inherit name;
       expr = ninx.serialize nix-expr;
     }).result;

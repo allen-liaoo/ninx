@@ -1,0 +1,40 @@
+name: run-tests
+
+on:
+  push:
+    paths:
+      - ".github/**"
+      - "**.nix"
+      - "flake.lock"
+  pull_request:
+    paths:
+      - ".github/**"
+      - "**.nix"
+      - "flake.lock"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: nixbuild/nix-quick-install-action@v34
+        with:
+          nix_conf: |
+            experimental-features = nix-command flakes recursive-nix
+            keep-env-derivations = true
+            keep-outputs = true
+
+      - name: Restore Nix cache
+        uses: nix-community/cache-nix-action@v5
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', 'flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 1G
+          purge: true
+          purge-prefixes: nix-${{ runner.os }}-
+
+      - name: Run checks
+        run: nix flake check #tests

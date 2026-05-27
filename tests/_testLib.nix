@@ -1,7 +1,7 @@
 
 {
   nixpkgs,
-  ninx,
+  ninx ? null,
 }:
 
 let
@@ -27,34 +27,66 @@ rec {
       ))
       lib.concatStrings
     ] + "}";
-  #"{" + serialize.bindings (strip "attrs" e) + "}";
 
-
-  # Evaluates a nix code string, returns result or error; build never fails
-  evalNixStr =
+  # Evaluate nix code, return result or error; build never fails
+  evalNix =
     {
-      args ? [
+      nixArgs ? [
         "--json"
         "--show-trace"
         "--impure"
       ],
       name ? "eval",
-      expr,
+      expr ? null, # expression string to evaluate
+      src ? null,  # src directory of file to evaluate
+      entrypoint ? "default.nix",  # used when src is given
+      callArgs ? null, # call expr or imported entrypoint with string args
+      drvArgs ? { },   # args to pass into derivation
     }:
+    assert (src == null) != (expr == null);  # exactly one required
     let
-      args' = lib.concatStringsSep " " args;
+      nixArgs' = lib.concatStringsSep " " nixArgs;
       script =
         nixpkgs.runCommand name
-          {
-            requiredSystemFeatures = [ "recursive-nix" ];
-          }
+          (
+            {
+              requiredSystemFeatures = [ "recursive-nix" ];
+              nativeBuildInputs = [ nixpkgs.nix ];
+            }
+            // lib.optionalAttrs (src != null) { inherit src; }
+            // drvArgs
+          )
           ''
             mkdir -p "$out"
 
-            if ${nixpkgs.nix}/bin/nix \
+            ${if expr != null then ''
+              cat > eval.nix << 'EOF'
+              ${expr}
+              EOF
+              target=./eval.nix
+            '' else ''
+              cp -r "$src" ./src
+              chmod -R u+w ./src
+              target=./src/${entrypoint}
+            ''}
+
+            # Store call args in file so we don't have to escape quotes and the likes
+            ${if callArgs != null then ''
+              cat > callargs.nix << 'EOF_CALLARGS'
+              ${callArgs}
+              EOF_CALLARGS
+            '' else ""}
+
+            ${if callArgs != null then ''
+              evalExpr="(import $target) (import ./callargs.nix)"
+            '' else ''
+              evalExpr="import $target"
+            ''}
+
+            if nix \
               --extra-experimental-features nix-command \
-              eval ${args'} \
-              --expr '${expr}' \
+              eval ${nixArgs'} \
+              --expr "$evalExpr" \
               > "$out/result.json" \
               2> "$out/error"
             then
@@ -62,7 +94,6 @@ rec {
             else
               echo $? > "$out/exit-code"
             fi
-
             exit 0
           '';
     in
@@ -70,5 +101,6 @@ rec {
       success = 0 == lib.toInt (builtins.readFile "${script}/exit-code");
       result = builtins.fromJSON (builtins.readFile "${script}/result.json");
       error = builtins.readFile "${script}/error";
+      out = script;
     };
 }

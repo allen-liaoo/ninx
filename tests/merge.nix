@@ -25,8 +25,6 @@ let
       ++ map (e: { inherit e; }) ninxExprs;
     }).config.e;
 
-  ninxInStore = builtins.path { path = ninxPath; };
-
   testMergeError =
     testName: errorMsg: ninxExprs:
     let
@@ -35,7 +33,7 @@ let
         let
           nixpkgs = import ${nixpkgsPath} {};
           lib = nixpkgs.lib;
-          ninx = import ${ninxInStore} {
+          ninx = import ${ninxPath} {
             inherit nixpkgs;
           };
         in
@@ -50,7 +48,7 @@ let
           ++ map (e: { inherit e; }) ${code};
         }).config.e
       '';
-      evalRes = ninx-test-lib.evalNixStr {
+      evalRes = ninx-test-lib.evalNix {
         name = testName;
         expr = evalCode;
       };

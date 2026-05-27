@@ -1,7 +1,7 @@
 # ninx
 > Nix in Nix
 
-Nix expressions as a serializable data type in Nix
+Store, merge, and serialize Nix expressions in Nix via the modules system.
 
 ## Why?
 Fair question. Why would you want to store encoded Nix code in Nix?
@@ -15,11 +15,52 @@ If you ~~are as crazy as me~~ have found other uses for ninx, please let me know
 ## Usage
 ninx provides types for nix expressions via the Nixpkgs module system. You can use them like so:
 ```nix
+{ lib, ninx, ... }:
 {
   options.e = lib.mkOption {
-    type = ninx.types.nix-expr; # TODO: nix format
+    type = ninx.types.expr;
   };
   config.e = { a = 1; };
+}
+```
+
+To use ninx, import this repo with the argument `{ nixpkgs = ...; }` (optional, defaults to `<nixpkgs>`), which outputs:
+- Constructors for nix expressions directly (ergonomic helpers more on this below)
+- `types`: attribute set of nix expression types
+- `format`: [nixpkgs format compliant](https://nixos.org/manual/nixos/stable/#sec-settings-nix-representableA) attribute set; so you can replace `ninx.types.expr` above with `ninx.format.type`
+- Utility functions (`serialize`, `getType`, etc.)
+
+Alternatively, if you use flakes, use this repo's provided overlay output, `ninx.overlays.default`. For example, in your NixOS configuration:
+```nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    ninx.url    = "github:allen-liaoo/ninx"; # this repository
+  };
+
+  outputs = { nixpkgs, ninx, ... }: {
+    nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        { nixpkgs.overlays = [ ninx.overlays.default ]; } # here
+        ...
+      ];
+    };
+  };
+}
+```
+Then you can access the ninx `format` in `pkgs.formats.ninx`:
+```nix
+{ pkgs, lib, config, ... }:
+let
+  fmt = pkgs.formats.ninx { }; # empty args
+in {
+  options.gen-nix.content = lib.mkOption {
+    type = fmt.type;
+    default = { };
+  };
+  config.environment.etc."dir/generated-nix.nix".source =
+    fmt.generate "generated-nix.nix" config.myService.content;
 }
 ```
 
@@ -47,7 +88,7 @@ var "a"
 recc { a = var "b"; b.c = 2; } # rec { a = b; b.c = 2; }
 
 # operators
-op."." { a.b = 1; } "a.b"      # { a.b = 1;}.a.b
+op."." (var "a") "b"           # a.b
 op.".or" (var "a") "b" 1       # a.b or 1
 op."~" 1                       # - 1
 op."//" (var "a") { b = 2; }   # a // { b = 2; }
@@ -57,23 +98,27 @@ cond [
   ifthen false 1
   ifthen true 2
 ] 3
-# if false
-#   then 1
-# else if true
-#   then 2 
-# else 3
-# evaluates to 2
+/*
+if false
+  then 1
+else if true
+  then 2 
+else 3
+*/
 
 # let-ins
 letin { a = 1; b.c = 2; } (var "b")   # evaluates to { c = 2; }
-letin { x = (app (var "f") (var "x")); } (var "x")    # fix point! let x = f x; in x
+letin { x = (app (var "f") (var "x")); } (var "x")    # fixed point! let x = f x; in x
 
 # functions
 lambda "x" (var "x")   # identity function, (x: x)
-# you can also use attrset pattern in the argument:
-#   optional arguments, @-pattern and ...-pattern (varargs)
-# below are equivalent to:
-# ({ a ? 2, b, ... }@args: b)
+/*
+you can also use attrset pattern in the argument:
+optional arguments, @-pattern and ...-pattern (varargs)
+
+below are equivalent to:
+({ a ? 2, b, ... }@args: b)
+*/
 lambda { a = 2; b = null; __at = "args"; __varargs = true; } (var "b")
 lambda (args { a = 2; b = null; } "args" true) (var "b")
 
@@ -106,17 +151,17 @@ Because expressions are types in the module system, they can be merged.
 + Functions: Argument (if attribute set) can be merged (like `attrsof`), functopn body can be merged
 + WIP: Merging operator expressions and applications (in place list merging)
 
+Merging works with functions like `mkForce`, `mkDefault`, `mkBefore`, `mkAfter` (also for conditionals or lists of nix exprs).
+
 ## Status
 - [x] Options/Types definitions
   - [x] Type checking behavior
-  - [ ] Merging behavior
+  - [x] Merging behavior
+  - [ ] In-place list merging
   - [ ] `with`, `assert`, `inherit`, comments: does anyone really need these?
 - [x] Ergnomic helpers
 - [x] Serialization
+  - [ ] Tests for serialization (string, not eval result)
+- [x] Repo flake
+  - [x] CI for tests
 - [ ] Evaluation? (entirely possible, just tedious)
-
-## Development
-To run tests (in repo root):
-```
-nix eval --expr 'import ./tests {}' --impure --show-trace
-```

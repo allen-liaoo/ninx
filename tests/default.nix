@@ -1,28 +1,35 @@
 {
   nixpkgsPath ? <nixpkgs>, # necessary for using when evaluating nix str
-  nixpkgs ? import nixpkgsPath { },
-  lib ? nixpkgs.lib,
+  nixpkgsArgs ? { },
   ninxPath ? ../., # for evaluating nix str
-  ninx ? import ninxPath { inherit nixpkgs; },
-  ninx-lib ? import ../lib.nix { inherit nixpkgs; },
-  ninx-test-lib ? import ./_testLib.nix { inherit nixpkgs ninx; },
   ...
 }:
 
 let
+  # bring these dependencies in store
+  # very important for evalNix (recursive-nix)
+  nixpkgsPath' = builtins.path { path = nixpkgsPath; };
+  ninxPath' = builtins.path { path = ninxPath; };
+
+  nixpkgs = import nixpkgsPath' nixpkgsArgs;
+  lib = nixpkgs.lib;
+  ninx = import ninxPath' { inherit nixpkgs; };
+  ninx-lib = import ../lib.nix { inherit nixpkgs; };
+  ninx-test-lib = import ./_testLib.nix { inherit nixpkgs ninx; };
+
   globalArgs = {
     inherit
       nixpkgs
-      nixpkgsPath
       lib
       ninx
-      ninxPath
       ninx-lib
       ninx-test-lib
       testWithMsg
       test
       testEq
       ;
+    nixpkgsPath = nixpkgsPath';
+    ninxPath = ninxPath';
   };
 
   testWithMsg = name: cond: msg: {
@@ -81,13 +88,19 @@ let
 
   # run testFile on directory (list of files)
   testDir = dirname: map (f: testFile (dirname + "/" + f)) (import ./${dirname});
-in
 
-lib.foldl (failed: stat: failed + stat.failed) 0 (
-  [
-    (testFile "types.nix")
-    (testFile "serialize-eval.nix")
-    (testFile "merge.nix")
-  ]
-  ++ (testDir "lib-tests")
-)
+  # run tests and collect number of failed tests
+  testsFailed = 
+    lib.foldl (failed: stat: failed + stat.failed) 0 (
+      [
+        (testFile "types.nix")
+        (testFile "serialize-eval.nix")
+        (testFile "merge.nix")
+      ]
+      ++ (testDir "lib-tests")
+    );
+in
+if testsFailed != 0 then
+    builtins.throw "Tests failed: ${toString testsFailed} failures" # ensure exit status is non-0
+else testsFailed
+

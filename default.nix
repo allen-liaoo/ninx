@@ -1,10 +1,10 @@
 {
   nixpkgs ? import <nixpkgs> { },
-  lib ? nixpkgs.lib,
   ...
 }:
 
 let
+  lib = nixpkgs.lib;
   ninx-lib = import ./lib.nix { inherit nixpkgs lib; };
 
   inherit (builtins)
@@ -240,7 +240,7 @@ let
 
   });
 
-  # Utilities
+  # Internal Utilities
   specialAttrs.attrs = [ "__rec" ];
   specialAttrs.function-arg = [
     "__at"
@@ -420,4 +420,19 @@ ergo
     getType
     ;
   types = nix-types;
+
+  format = {}: {
+    type = nix-types.expr;
+    lib = {
+      inherit 
+        ergo
+        serialize
+        getType
+        ;
+    };
+    generate = filename: expr: nixpkgs.writeTextFile {
+      name = filename;
+      text = serialize expr;
+    };
+  };
 }
