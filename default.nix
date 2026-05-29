@@ -374,13 +374,18 @@ let
           if isString e.__arg then
             e.__arg
           else ''
-            {${(mapAttrsToList (
-              k: v: ''
-                ${k}${if isNull v then "" else " ? " + serialize v},
-              ''
-            ) (strip "function-arg" e.__arg))}
-            ${if e.__varargs then "..." else ""}}
-            ${if e.__at != null then "@${e.__at}" else ""}
+            {${
+              pipe e.__arg [
+                (strip "function-arg")
+                (mapAttrsToList
+                  (k: v: ''
+                    ${k}${if isNull v then "" else " ? " + serialize v},
+                  '')
+                )
+                concatStrings
+              ]}
+              ${if e.__arg.__varargs then "..." else ""}}
+            ${if e.__arg.__at != null then "@${e.__arg.__at}" else ""}
           ''}
         :
         ${serialize e.__body}
